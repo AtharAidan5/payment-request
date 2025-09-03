@@ -9,23 +9,50 @@ import { HiBuildingOffice } from "react-icons/hi2";
 import { VscSettings } from "react-icons/vsc";
 import { useState, useMemo, ChangeEvent, FormEvent, useEffect } from "react";
 
+const HRIS_API = process.env.NEXT_PUBLIC_HRIS_API_URL || "";
+const HRIS_TOKEN = process.env.NEXT_PUBLIC_HRIS_BARRIER_TOKEN || "";
+
+type Employee = {
+  id: number;
+  name: string;
+  branch: string;
+  department: string;
+};
+
 export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [priceDisplay, setPriceDisplay] = useState("");
   const [priceRaw, setPriceRaw] = useState<number | null>(null);
-  const [equipmentList, setEquipmentList] = useState<any[]>([]);
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // State object now includes all form fields
   const [formData, setFormData] = useState({
     fullName: "",
     branch: "",
     department: "",
+    equipmentName: "",
+    onlineStoreLink: "",
+    bankName: "",
+    bankAccountNumber: "",
+    bankAccountName: "",
+    dateNeeded: "",
+    details: "",
   });
 
-  const [allNames, setAllNames] = useState<string[]>([]);
-  const [nameInput, setNameInput] = useState("");
-  const [nameSuggestions, setNameSuggestions] = useState<string[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
+
+  // Autocomplete for Branch
+  const [showBranchSuggestions, setShowBranchSuggestions] = useState(false);
+  const [filteredBranches, setFilteredBranches] = useState<string[]>([]);
+  const uniqueBranches = useMemo(() =>
+    Array.from(new Set(employees.map(emp => emp.branch))).filter(Boolean), [employees]);
+
+  // Autocomplete for Department
+  const [showDeptSuggestions, setShowDeptSuggestions] = useState(false);
+  const [filteredDepts, setFilteredDepts] = useState<string[]>([]);
+  const uniqueDepts = useMemo(() =>
+    Array.from(new Set(employees.map(emp => emp.department))).filter(Boolean), [employees]);
 
   const idFormatter = useMemo(() => new Intl.NumberFormat("id-ID"), []);
   const formatIDR = (digits: string) =>
@@ -47,53 +74,35 @@ export default function Home() {
     }));
   };
 
-  const handleNameInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setNameInput(value);
-    setFormData(prev => ({ ...prev, fullName: value }));
-    if (value.length > 0) {
-      setNameSuggestions(
-        allNames.filter(name =>
-          name.toLowerCase().includes(value.toLowerCase())
-        )
-      );
-    } else {
-      setNameSuggestions([]);
-    }
-  };
-
-  const handleSuggestionClick = (name: string) => {
-    setNameInput(name);
-    setFormData(prev => ({ ...prev, fullName: name }));
-    setNameSuggestions([]);
-  };
-
-  // Function to reset the form after submission
   const resetForm = () => {
     setFormData({
       fullName: "",
       branch: "",
       department: "",
+      equipmentName: "",
+      onlineStoreLink: "",
+      bankName: "",
+      bankAccountNumber: "",
+      bankAccountName: "",
+      dateNeeded: "",
+      details: "",
     });
     setPriceDisplay("");
     setPriceRaw(null);
   };
 
-  // The function that handles the API submission
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
     const submissionData = {
-      fullName: formData.fullName,
-      branch: formData.branch,
-      department: formData.department,
+      ...formData,
+      price: priceRaw,
     };
 
     console.log("Submitting to API:", submissionData);
 
     try {
-      // Directly use the API endpoint
       const response = await fetch("/api/equipment", {
         method: "POST",
         headers: {
@@ -107,7 +116,11 @@ export default function Home() {
         resetForm();
       } else {
         const errorData = await response.json();
-        alert(`Submission failed: ${errorData.message || errorData.error || "Unknown error"}`);
+        alert(
+          `Submission failed: ${
+            errorData.message || errorData.error || "Unknown error"
+          }`
+        );
       }
     } catch (error) {
       console.error("An error occurred during submission:", error);
@@ -117,74 +130,137 @@ export default function Home() {
     }
   };
 
+  // connect and fetch employees dari HRIS API
   useEffect(() => {
-    const fetchEquipmentList = async () => {
+    const fetchEmployees = async () => {
+      setLoadingEmployees(true);
       try {
-        const response = await fetch("/api/equipment");
-        if (!response.ok) {
-          throw new Error("Failed to fetch equipment data");
-        }
-        const data = await response.json();
-        setEquipmentList(Array.isArray(data) ? data : [data]);
-      } catch (error: any) {
-        setFetchError(error.message || "Unknown error");
+        const res = await fetch(`${HRIS_API}/employee`, {
+          headers: {
+            Authorization: `Bearer ${HRIS_TOKEN}`,
+          },
+        });
+        if (!res.ok) throw new Error("Failed to fetch employees");
+        const data = await res.json();
+        setEmployees(data?.data || []);
+      } catch (err) {
+        console.error("Error fetching employees:", err);
+      } finally {
+        setLoadingEmployees(false);
       }
     };
-    fetchEquipmentList();
+    if (HRIS_API && HRIS_TOKEN) {
+      fetchEmployees();
+    }
   }, []);
 
-  useEffect(() => {
-    const fetchNames = async () => {
-      try {
-        const response = await fetch("/api/equipment");
-        if (!response.ok) throw new Error("Failed to fetch names");
-        const data = await response.json();
-        const names = Array.isArray(data)
-          ? [...new Set(data.map((item: any) => item.fullName).filter(Boolean))]
-          : [];
-        setAllNames(names);
-      } catch (error) {
-        setAllNames([]);
-      }
-    };
-    fetchNames();
-  }, []);
+  // Autocomplete handler for Full Name
+  const handleFullNameChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData((prev) => ({ ...prev, fullName: value }));
+    if (value.length > 0) {
+      const filtered = employees.filter((emp) =>
+        emp.name.toLowerCase().startsWith(value.toLowerCase())
+      );
+      setFilteredEmployees(filtered);
+      setShowSuggestions(true);
+    } else {
+      setFilteredEmployees([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  // When user clicks a suggestion
+  const handleSuggestionClick = (emp: Employee) => {
+    setFormData((prev) => ({
+      ...prev,
+      fullName: emp.name,
+      branch: emp.branch,
+      department: emp.department,
+    }));
+    setShowSuggestions(false);
+  };
+
+  // Autocomplete for Branch
+  const handleBranchChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData((prev) => ({ ...prev, branch: value }));
+    if (value.length > 0) {
+      const filtered = uniqueBranches.filter(branch =>
+        branch.toLowerCase().startsWith(value.toLowerCase())
+      );
+      setFilteredBranches(filtered);
+      setShowBranchSuggestions(true);
+    } else {
+      setFilteredBranches([]);
+      setShowBranchSuggestions(false);
+    }
+  };
+  const handleBranchSuggestionClick = (branch: string) => {
+    setFormData((prev) => ({ ...prev, branch }));
+    setShowBranchSuggestions(false);
+  };
+
+  // Autocomplete for Department
+  const handleDeptChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData((prev) => ({ ...prev, department: value }));
+    if (value.length > 0) {
+      const filtered = uniqueDepts.filter(dept =>
+        dept.toLowerCase().startsWith(value.toLowerCase())
+      );
+      setFilteredDepts(filtered);
+      setShowDeptSuggestions(true);
+    } else {
+      setFilteredDepts([]);
+      setShowDeptSuggestions(false);
+    }
+  };
+  const handleDeptSuggestionClick = (department: string) => {
+    setFormData((prev) => ({ ...prev, department }));
+    setShowDeptSuggestions(false);
+  };
 
   return (
     <main className="flex flex-col items-center justify-center mx-auto px-4 min-h-screen">
       <div className="w-full max-w-2xl bg-white rounded-md shadow-lg my-8">
-        {/* The <form> tag now wraps all inputs and the submit button */}
         <form onSubmit={handleSubmit} className="flex flex-col mx-13">
-          <h1 className="text-center justify-center text-3xl font-bold text-black pt-11">
+          <h1 className="text-center text-3xl font-bold text-black pt-11">
             Equipment Payment Request
           </h1>
-          <p className="text-center justify-center text-md text-gray-600 pt-2">
+          <p className="text-center text-md text-gray-600 pt-2">
             Please fill out the form below to request a new equipment purchase.
           </p>
+
+          {/* Full Name & Branch */}
           <div className="flex flex-row justify-center items-start gap-x-8 w-full">
-            {/* Full Name */}
+            {/* Full Name Autocomplete */}
             <div className="flex flex-col w-full">
               <p className="text-black pt-8">Full Name</p>
               <div className="relative">
                 <FaUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   name="fullName"
-                  type="text"
                   required
-                  value={nameInput}
-                  onChange={handleNameInputChange}
+                  autoComplete="off"
+                  value={formData.fullName}
+                  onChange={handleFullNameChange}
+                  onFocus={() => {
+                    if (formData.fullName && filteredEmployees.length > 0) setShowSuggestions(true);
+                  }}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 100)}
                   className="w-full pl-10 py-2 border border-gray-300 rounded-md"
-                  placeholder="Syafi Athar Aidan"
+                  placeholder={loadingEmployees ? "Loading employees..." : "Type employee name"}
                 />
-                {nameSuggestions.length > 0 && (
-                  <ul className="absolute z-10 bg-white border border-gray-300 w-full mt-1 rounded shadow dropdown">
-                    {nameSuggestions.map((name, idx) => (
+                {showSuggestions && filteredEmployees.length > 0 && (
+                  <ul className="absolute z-10 left-0 right-0 bg-white border border-gray-300 rounded-md mt-1 max-h-40 overflow-y-auto shadow-lg">
+                    {filteredEmployees.map((emp) => (
                       <li
-                        key={idx}
-                        onClick={() => handleSuggestionClick(name)}
-                        className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                        key={emp.id}
+                        className="px-4 py-2 hover:bg-blue-100 cursor-pointer"
+                        onMouseDown={() => handleSuggestionClick(emp)}
                       >
-                        {name}
+                        {emp.name}
                       </li>
                     ))}
                   </ul>
@@ -201,16 +277,35 @@ export default function Home() {
                   name="branch"
                   type="text"
                   required
+                  autoComplete="off"
                   value={formData.branch}
-                  onChange={handleChange}
+                  onChange={handleBranchChange}
+                  onFocus={() => {
+                    if (formData.branch && filteredBranches.length > 0) setShowBranchSuggestions(true);
+                  }}
+                  onBlur={() => setTimeout(() => setShowBranchSuggestions(false), 100)}
                   className="w-full pl-10 py-2 border border-gray-300 rounded-md"
                   placeholder="e.g. Cretivox"
                 />
+                {showBranchSuggestions && filteredBranches.length > 0 && (
+                  <ul className="absolute z-10 left-0 right-0 bg-white border border-gray-300 rounded-md mt-1 max-h-40 overflow-y-auto shadow-lg">
+                    {filteredBranches.map((branch) => (
+                      <li
+                        key={branch}
+                        className="px-4 py-2 hover:bg-blue-100 cursor-pointer"
+                        onMouseDown={() => handleBranchSuggestionClick(branch)}
+                      >
+                        {branch}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </div>
+
+          {/* Department */}
           <div className="flex flex-row justify-center text-start gap-x-8">
-            {/* Department */}
             <div className="flex flex-col w-full">
               <label className="text-black pt-8">Department</label>
               <div className="relative">
@@ -219,11 +314,29 @@ export default function Home() {
                   name="department"
                   type="text"
                   required
+                  autoComplete="off"
                   value={formData.department}
-                  onChange={handleChange}
+                  onChange={handleDeptChange}
+                  onFocus={() => {
+                    if (formData.department && filteredDepts.length > 0) setShowDeptSuggestions(true);
+                  }}
+                  onBlur={() => setTimeout(() => setShowDeptSuggestions(false), 100)}
                   className="w-full pl-10 py-2.5 border border-gray-300 rounded-md"
                   placeholder="e.g. IT"
                 />
+                {showDeptSuggestions && filteredDepts.length > 0 && (
+                  <ul className="absolute z-10 left-0 right-0 bg-white border border-gray-300 rounded-md mt-1 max-h-40 overflow-y-auto shadow-lg">
+                    {filteredDepts.map((dept) => (
+                      <li
+                        key={dept}
+                        className="px-4 py-2 hover:bg-blue-100 cursor-pointer"
+                        onMouseDown={() => handleDeptSuggestionClick(dept)}
+                      >
+                        {dept}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
 
@@ -236,6 +349,7 @@ export default function Home() {
                   name="equipmentName"
                   type="text"
                   required
+                  value={formData.equipmentName}
                   onChange={handleChange}
                   className="w-full pl-10 py-2 border border-gray-300 rounded-md"
                   placeholder="e.g. Laptop, Camera, etc."
@@ -251,8 +365,9 @@ export default function Home() {
               <FaLink className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 name="onlineStoreLink"
-                type="url" // Use type="url" for better validation
+                type="url"
                 required
+                value={formData.onlineStoreLink}
                 onChange={handleChange}
                 className="w-full pl-10 py-2 border border-gray-300 rounded-md"
                 placeholder="https://example.com/product/123"
@@ -260,8 +375,8 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Bank Name & Account */}
           <div className="flex flex-row justify-center text-start gap-x-8">
-            {/* Bank Name */}
             <div className="flex flex-col w-full">
               <p className="text-black pt-8">Bank Name</p>
               <div className="relative">
@@ -269,19 +384,20 @@ export default function Home() {
                 <select
                   name="bankName"
                   required
+                  value={formData.bankName}
                   onChange={handleChange}
                   className="w-full pl-10 py-2.5 border border-gray-300 rounded-md"
                 >
-                  <option value="" disabled>-- Select Bank Name --</option>
+                  <option value="" disabled>
+                    -- Select Bank Name --
+                  </option>
                   <option value="BCA">BCA</option>
                   <option value="Mandiri">Bank Mandiri</option>
                   <option value="BRI">Bank Rakyat Indonesia</option>
-                  {/* ... other options */}
                 </select>
               </div>
             </div>
 
-            {/* Bank Account Number */}
             <div className="flex flex-col w-full">
               <p className="text-black pt-8">Bank Account Number</p>
               <div className="relative">
@@ -290,6 +406,7 @@ export default function Home() {
                   name="bankAccountNumber"
                   type="text"
                   required
+                  value={formData.bankAccountNumber}
                   onChange={handleChange}
                   className="w-full pl-10 py-2 border border-gray-300 rounded-md"
                   placeholder="1234567890"
@@ -307,6 +424,7 @@ export default function Home() {
                 name="bankAccountName"
                 type="text"
                 required
+                value={formData.bankAccountName}
                 onChange={handleChange}
                 className="w-full pl-10 py-2 border border-gray-300 rounded-md"
                 placeholder="Syafi Athar Aidan"
@@ -314,8 +432,8 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Price & Date */}
           <div className="flex flex-row justify-center text-start gap-x-8">
-            {/* Price */}
             <div className="flex flex-col w-full">
               <label className="text-black pt-8">Price</label>
               <div className="relative">
@@ -334,7 +452,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Date Needed */}
             <div className="flex flex-col w-full">
               <label className="text-black pt-8">Date Needed</label>
               <div className="relative">
@@ -343,6 +460,7 @@ export default function Home() {
                   name="dateNeeded"
                   type="date"
                   required
+                  value={formData.dateNeeded}
                   onChange={handleChange}
                   className="w-full pl-10 border border-gray-300 rounded-md py-2"
                 />
@@ -355,16 +473,17 @@ export default function Home() {
             <label className="text-black pt-8">Details / Specifications</label>
             <textarea
               name="details"
+              value={formData.details}
               onChange={handleChange}
               className="w-full border border-gray-300 rounded-md p-2"
-              placeholder="Please provide any specific details, e.g., color, size, model number, or justification for the purchase..."
+              placeholder="Please provide any specific details..."
             />
           </div>
 
           <div className="flex justify-center pt-8 pb-10">
             <button
-              type="submit" // Triggers the form's onSubmit
-              disabled={isLoading} // Disables button during submission
+              type="submit"
+              disabled={isLoading}
               className="bg-blue-600 hover:bg-blue-800 hover:scale-105 text-white py-3 px-8 rounded-lg transition-all disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {isLoading ? "Submitting..." : "Submit Request"}
