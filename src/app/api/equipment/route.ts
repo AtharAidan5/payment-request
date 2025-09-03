@@ -64,9 +64,10 @@ async function callUpstream(method: "GET" | "POST", body?: unknown) {
 export async function GET(_req: NextRequest) {
   try {
     return await callUpstream("GET");
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";
     return NextResponse.json(
-      { error: err?.message ?? "An unexpected error occurred." },
+      { error: errorMessage },
       { status: 500 }
     );
   }
@@ -76,9 +77,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     return await callUpstream("POST", body);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";
     return NextResponse.json(
-      { error: err?.message ?? "An unexpected error occurred." },
+      { error: errorMessage },
       { status: 500 }
     );
   }
