@@ -233,7 +233,7 @@ export default function Home() {
           </p>
 
           {/* Full Name & Branch */}
-          <div className="flex flex-row justify-center items-start gap-x-8 w-full">
+          <div className="flex flex-col lg:flex-row justify-center items-start gap-x-8 w-full">
             {/* Full Name Autocomplete */}
             <div className="flex flex-col w-full">
               <p className="text-black pt-8">Full Name</p>
@@ -304,8 +304,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Department */}
-          <div className="flex flex-row justify-center text-start gap-x-8">
+          <div className="flex flex-col lg:flex-row justify-center text-start gap-x-8">
+            {/* Department */}
             <div className="flex flex-col w-full">
               <label className="text-black pt-8">Department</label>
               <div className="relative">
@@ -376,7 +376,7 @@ export default function Home() {
           </div>
 
           {/* Bank Name & Account */}
-          <div className="flex flex-row justify-center text-start gap-x-8">
+          <div className="flex flex-col lg:flex-row justify-center text-start gap-x-8">
             <div className="flex flex-col w-full">
               <p className="text-black pt-8">Bank Name</p>
               <div className="relative">
@@ -433,7 +433,7 @@ export default function Home() {
           </div>
 
           {/* Price & Date */}
-          <div className="flex flex-row justify-center text-start gap-x-8">
+          <div className="flex flex-col lg:flex-row justify-center text-start gap-x-8">
             <div className="flex flex-col w-full">
               <label className="text-black pt-8">Price</label>
               <div className="relative">
